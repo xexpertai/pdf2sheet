@@ -1,0 +1,14 @@
+{
+  "format": "pdf2sheet-preset",
+  "version": 1,
+  "name": "Demo Bank monthly statement",
+  "settings": {
+    "boundaries": [100, 350, 408, 490],
+    "gap": 8,
+    "headerMode": "auto",
+    "currency": "strip",
+    "mergeWrapped": true,
+    "region": { "x0": 30, "y0": 105, "x1": 565, "y1": 420 },
+    "pages": null
+  }
+}

@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; worker-src 'self' blob:; connect-src 'self' blob: data:; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta name="description" content="Extract tables from text-based PDFs and export clean XLSX or CSV. Runs entirely in your browser; nothing is uploaded.">
+  <title>pdf2sheet: PDF tables to Excel and CSV, privately in your browser</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="src/app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="topbar">
+    <h1>pdf2sheet</h1>
+    <p class="tagline">PDF tables to XLSX / CSV. Runs in your browser: <strong>nothing is uploaded</strong>.</p>
+  </header>
+
+  <main id="main">
+    <section class="loader" aria-labelledby="load-h">
+      <h2 id="load-h">1. Load a PDF</h2>
+      <div id="drop" class="drop">
+        <p>Drop a text-based PDF here (max 20 MB), or</p>
+        <label class="btn primary" for="file">Choose a PDF…</label>
+        <input id="file" class="visually-hidden-input" type="file" accept=".pdf,application/pdf">
+      </div>
+      <div class="samples">
+        <span id="samples-label">Or try a fictional demo file:</span>
+        <div class="btn-row" role="group" aria-labelledby="samples-label">
+          <button type="button" class="btn" data-sample="invoice-demo.pdf">Invoice</button>
+          <button type="button" class="btn" data-sample="statement-demo.pdf">Bank statement</button>
+          <button type="button" class="btn" data-sample="price-list-demo.pdf">Price list (3 pages)</button>
+          <button type="button" class="btn" data-sample="scanned-demo.pdf">Scanned page</button>
+        </div>
+      </div>
+      <p id="error" class="error" role="alert" hidden></p>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </section>
+
+    <div id="workspace" class="workspace" hidden>
+      <section class="preview" aria-labelledby="preview-h">
+        <h2 id="preview-h">2. Check the columns <span id="doc-info" class="muted"></span></h2>
+        <nav id="thumbs" class="thumbs" aria-label="Pages"></nav>
+        <div class="toolbar">
+          <fieldset class="seg">
+            <legend class="visually-hidden">Preview tool</legend>
+            <input type="radio" name="mode" id="mode-cols" value="columns" checked><label for="mode-cols">Columns</label>
+            <input type="radio" name="mode" id="mode-region" value="region"><label for="mode-region">Region</label>
+          </fieldset>
+          <button type="button" class="btn" id="clear-region">Clear region</button>
+          <button type="button" class="btn" id="auto-cols">Automatic columns</button>
+        </div>
+        <p id="hint" class="hint">Click the page to add a column boundary, drag a line to move it, double-click (or press Delete) to remove it.</p>
+        <div id="stage" class="stage">
+          <canvas id="page-canvas" aria-label="Page preview"></canvas>
+          <div id="overlay" class="overlay"></div>
+        </div>
+      </section>
+
+      <aside class="side">
+        <section aria-labelledby="settings-h" class="card">
+          <h2 id="settings-h">Settings</h2>
+          <div class="form-grid">
+            <label for="gap">Column gap (pt)</label>
+            <input id="gap" type="number" min="1" max="100" step="1" value="8">
+            <label for="page-from">Pages from</label>
+            <div class="pair">
+              <input id="page-from" type="number" min="1" step="1" value="1">
+              <label for="page-to">to</label>
+              <input id="page-to" type="number" min="1" step="1" value="1">
+            </div>
+            <label for="header-mode">Header row</label>
+            <select id="header-mode">
+              <option value="auto">Detect automatically</option>
+              <option value="none">No header</option>
+            </select>
+            <label for="currency">Currency values</label>
+            <select id="currency">
+              <option value="strip">Strip symbol, keep number</option>
+              <option value="text">Keep as text</option>
+            </select>
+          </div>
+          <div class="check">
+            <input id="merge-wrapped" type="checkbox" checked>
+            <label for="merge-wrapped">Merge wrapped (multi-line) cells</label>
+          </div>
+        </section>
+
+        <section aria-labelledby="checks-h" class="card">
+          <h2 id="checks-h">Data checks</h2>
+          <div id="checks"><p class="muted">Load a PDF to see checks.</p></div>
+          <form id="totals" class="totals" novalidate>
+            <h3>Totals check</h3>
+            <label for="totals-col">Numeric column</label>
+            <select id="totals-col"></select>
+            <label for="totals-value">Expected total</label>
+            <input id="totals-value" type="text" inputmode="decimal" placeholder="e.g. 4,321.50">
+            <button class="btn" type="submit">Check</button>
+            <p id="totals-result" role="status" aria-live="polite"></p>
+          </form>
+        </section>
+
+        <section aria-labelledby="presets-h" class="card">
+          <h2 id="presets-h">Presets</h2>
+          <p class="muted small">Save columns, header and region settings for layouts you see every month.</p>
+          <div class="form-grid">
+            <label for="preset-name">Name</label>
+            <div class="pair">
+              <input id="preset-name" type="text" placeholder="Monthly statement">
+              <button type="button" class="btn" id="preset-save">Save</button>
+            </div>
+            <label for="preset-list">Saved</label>
+            <select id="preset-list"></select>
+          </div>
+          <div class="btn-row">
+            <button type="button" class="btn" id="preset-apply">Apply</button>
+            <button type="button" class="btn" id="preset-delete">Delete</button>
+            <button type="button" class="btn" id="preset-export">Export JSON</button>
+            <label class="btn" for="preset-import">Import JSON</label>
+            <input id="preset-import" class="visually-hidden-input" type="file" accept=".json,application/json">
+          </div>
+        </section>
+      </aside>
+
+      <section class="results" aria-labelledby="results-h">
+        <h2 id="results-h">3. Review and export</h2>
+        <div id="tabs" class="tabs" role="tablist" aria-label="Detected tables"></div>
+        <div class="toolbar">
+          <button type="button" class="btn" id="demote-header">Header → data row</button>
+          <span class="muted small">Arrow keys move, Enter edits, Esc cancels. Changing columns re-extracts and discards cell edits.</span>
+        </div>
+        <div id="grid-wrap" class="grid-wrap" role="tabpanel" aria-labelledby="results-h"></div>
+        <div class="export">
+          <button type="button" class="btn primary" id="export-xlsx">Download XLSX</button>
+          <span class="csv-opts">
+            <label for="csv-delim">CSV delimiter</label>
+            <select id="csv-delim">
+              <option value=",">Comma ,</option>
+              <option value=";">Semicolon ;</option>
+              <option value="tab">Tab</option>
+            </select>
+            <span class="check"><input id="csv-bom" type="checkbox" checked><label for="csv-bom">UTF-8 BOM</label></span>
+          </span>
+          <button type="button" class="btn" id="export-csv">Download CSV</button>
+          <button type="button" class="btn" id="copy-tsv">Copy as TSV</button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <p>pdf2sheet by Harsha Shinde · MIT licence · built with AI assistance · PDF rendering by pdf.js (Apache-2.0).
+      Your files never leave this device: no uploads, no analytics, works offline.</p>
+  </footer>
+</body>
+</html>
